@@ -17,7 +17,7 @@ require('dotenv').config();
 const app = express();
 
 const bcryptSalt = bcrypt.genSaltSync(10);
-const jwtSecret = 'fasefraw4r5r3wq45wdfgw34twdfg';
+const jwtSecret = process.env.JWT_SECRET;
 const bucket = 'dawid-booking-app';
 
 app.use(express.json());
@@ -122,15 +122,32 @@ app.post('/api/logout', (req,res) => {
 });
 
 
-app.post('/api/upload-by-link', async (req,res) => {
-  const {link} = req.body;
-  const newName = 'photo' + Date.now() + '.jpg';
-  await imageDownloader.image({
-    url: link,
-    dest: '/tmp/' +newName,
-  });
-  const url = await uploadToS3('/tmp/' +newName, newName, mime.lookup('/tmp/' +newName));
-  res.json(url);
+app.post('/api/upload-by-link', async (req, res) => {
+  try {
+    const { link } = req.body;
+
+    if (!link) {
+      return res.status(400).json({ error: "Image URL is required" });
+    }
+
+    const newName = 'photo' + Date.now() + '.jpg';
+    const tempPath = '/tmp/' + newName;
+
+    await imageDownloader.image({
+      url: link,
+      dest: tempPath,
+    });
+
+    const url = await uploadToS3(
+      tempPath,
+      newName,
+      mime.lookup(tempPath) || 'image/jpeg'
+    );
+    res.json(url);
+  } catch (err) {
+    console.error("Upload by link failed:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
 const photosMiddleware = multer({dest:'/tmp'});
@@ -202,6 +219,26 @@ app.get('/api/places', async (req,res) => {
   mongoose.connect(process.env.MONGO_URL);
   res.json( await Place.find() );
 });
+app.get('/api/locations', async (req,res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  const states = await Place.distinct("state");
+  res.json(states);
+});
+app.get('/api/search', async (req,res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  const {location, from, to, guests} = req.query;
+
+  const places = await Place.find({
+    state: location,
+    maxGuests: { $gte: guests },
+    availableFrom: { $lte: new Date(from) },
+    availableTo: { $gte: new Date(to) },
+  });
+
+  res.json(places);
+});
+
+
 
 app.post('/api/bookings', async (req, res) => {
   mongoose.connect(process.env.MONGO_URL);
