@@ -10,3 +10,6 @@
     {"source": "/(.*)", "destination": "/"}
   ]
 }
+{
+  // updated
+}
